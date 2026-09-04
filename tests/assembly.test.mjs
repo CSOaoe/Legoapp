@@ -20,6 +20,16 @@ test("detects collisions, off-grid placement, and floating parts",()=>{
  const kinds=validateAssembly(floating).map(issue=>issue.kind).sort();assert.deepEqual(kinds,["floating","off-grid"]);
 });
 
+test("recognises a lower brick tied to the base by a bridging brick above",()=>{
+ const parts=[
+  {id:"base",partNumber:"3005",position:[0,0,0],rotation:0,colour:4},
+  {id:"column",partNumber:"3005",position:[0,24,0],rotation:0,colour:4},
+  {id:"lower",partNumber:"3005",position:[20,24,0],rotation:0,colour:4},
+  {id:"bridge",partNumber:"3004",position:[10,48,0],rotation:0,colour:4},
+ ];
+ assert.deepEqual(validateAssembly(parts),[]);
+});
+
 test("round-trips versioned JSON and rejects unsupported parts",()=>{
  const document=defaultAssembly();assert.deepEqual(parseAssembly(serializeAssembly(document)),document);
  assert.throws(()=>parseAssembly('{"schemaVersion":1,"name":"bad","parts":[{"id":"x","partNumber":"9999","position":[0,0,0],"rotation":0,"colour":4}]}'),/Invalid part/);

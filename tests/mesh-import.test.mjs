@@ -43,3 +43,18 @@ endsolid sample`;
  const mesh=parseStl(bytes.buffer,"sample.stl");
  assert.equal(mesh.format,"STL");assert.equal(mesh.triangles.length,1);assert.equal(mesh.vertexCount,3);
 });
+
+test("support reinforcement never expands beyond the source solid",()=>{
+ const mesh=parseObj(cubeObj,"cube.obj");
+ const solid=voxelizeMesh(mesh,{maxWidthStuds:8,maxDepthStuds:8,maxHeightLayers:8,upAxis:"y",hollow:false,addSupports:false});
+ const reinforced=voxelizeMesh(mesh,{maxWidthStuds:8,maxDepthStuds:8,maxHeightLayers:8,upAxis:"y",hollow:true,addSupports:true});
+ assert.ok(reinforced.occupiedVoxels<=solid.occupiedVoxels);
+ for(let layer=0;layer<reinforced.height;layer++)for(const key of reinforced.layers[layer])assert.ok(solid.layers[layer].has(key));
+});
+
+test("auto orientation follows file conventions instead of the longest dimension",()=>{
+ const stretchedText=cubeObj.split("\n").map(line=>{if(!line.startsWith("v "))return line;const values=line.split(" ");values[3]=String(Number(values[3])*4);return values.join(" ")}).join("\n");
+ const stretched=parseObj(stretchedText,"long-depth.obj");
+ const objVolume=voxelizeMesh(stretched,{maxWidthStuds:8,maxDepthStuds:8,maxHeightLayers:8,upAxis:"auto",hollow:false,addSupports:false});
+ assert.equal(objVolume.upAxis,"y");
+});

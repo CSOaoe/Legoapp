@@ -21,6 +21,7 @@ export type VoxelizedMesh = {
   addedSupportVoxels: number;
   confidence: number;
   upAxis: Exclude<UpAxis, "auto">;
+  flipped: boolean;
 };
 
 export type VoxelizeOptions = {
@@ -30,6 +31,7 @@ export type VoxelizeOptions = {
   upAxis: UpAxis;
   hollow: boolean;
   addSupports: boolean;
+  flipUp?: boolean;
 };
 
 const MAX_TRIANGLES = 250_000;
@@ -123,9 +125,10 @@ export async function parseMeshFile(file: File): Promise<ParsedMesh> {
 }
 
 function axisIndexes(mesh: ParsedMesh, requested: UpAxis) {
-  const spans = mesh.bounds.max.map((value, axis) => value - mesh.bounds.min[axis]);
   const names = ["x", "y", "z"] as const;
-  const up = requested === "auto" ? spans.indexOf(Math.max(...spans)) : names.indexOf(requested);
+  // OBJ convention is Y-up and STL convention is Z-up. Choosing the longest
+  // dimension made long noses, wings, and vehicles stand on end.
+  const up = requested === "auto" ? (mesh.format === "OBJ" ? 1 : 2) : names.indexOf(requested);
   const horizontal = [0, 1, 2].filter(axis => axis !== up);
   return { up, across: horizontal[0], depth: horizontal[1], name: names[up] };
 }
@@ -147,7 +150,7 @@ export function voxelizeMesh(mesh: ParsedMesh, options: VoxelizeOptions): Voxeli
   const width = Math.max(1, Math.round(spans[axes.across] * scale)), depth = Math.max(1, Math.round(spans[axes.depth] * scale)), height = Math.max(1, Math.round(spans[axes.up] * scale));
   const transformed = mesh.triangles.map(triangle => triangle.map(vertex => [
     (vertex[axes.across] - mesh.bounds.min[axes.across]) / spans[axes.across] * width,
-    (vertex[axes.up] - mesh.bounds.min[axes.up]) / spans[axes.up] * height,
+    (options.flipUp ? mesh.bounds.max[axes.up] - vertex[axes.up] : vertex[axes.up] - mesh.bounds.min[axes.up]) / spans[axes.up] * height,
     (vertex[axes.depth] - mesh.bounds.min[axes.depth]) / spans[axes.depth] * depth,
   ] as Vector3) as MeshTriangle);
   const bins = new Map<string, MeshTriangle[]>();
@@ -176,9 +179,14 @@ export function voxelizeMesh(mesh: ParsedMesh, options: VoxelizeOptions): Voxeli
   let addedSupportVoxels = 0;
   if (options.addSupports) {
     for (let y = 1; y < height; y++) for (const key of [...layers[y]]) if (!layers[y - 1].has(key)) {
-      for (let below = y - 1; below >= 0 && !layers[below].has(key); below--) { layers[below].add(key); addedSupportVoxels++; }
+      // Reinforce only through volume that belongs to the source mesh. The old
+      // implementation projected every overhang to the base, which could add
+      // an object-sized forest of pillars and destroy the source silhouette.
+      for (let below = y - 1; below >= 0 && solid[below].has(key) && !layers[below].has(key); below--) {
+        layers[below].add(key); addedSupportVoxels++;
+      }
     }
   }
   const occupiedVoxels = layers.reduce((total, layer) => total + layer.size, 0);
-  return { width, depth, height, layers, occupiedVoxels, addedSupportVoxels, confidence: Math.round(mesh.closedConfidence * 100), upAxis: axes.name };
+  return { width, depth, height, layers, occupiedVoxels, addedSupportVoxels, confidence: Math.round(mesh.closedConfidence * 100), upAxis: axes.name, flipped: Boolean(options.flipUp) };
 }

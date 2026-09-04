@@ -8,9 +8,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { analyseImage, mergeProfiles, type AnalysedImage } from "../packages/reconstruction/src/image-analysis";
+import { MeshConversionPreview } from "../packages/reconstruction/src/mesh-conversion-preview";
 import { parseMeshFile, voxelizeMesh, type ParsedMesh, type UpAxis, type VoxelizedMesh } from "../packages/reconstruction/src/mesh-import";
 import { reconstructFromProfiles, reconstructFromVoxels, type ReconstructionResult } from "../packages/reconstruction/src/reconstruct";
-import { billOfMaterials, CATALOGUE, COLOURS, exportLDraw, serializeAssembly, type PartInstance } from "../packages/renderer/src/assembly";
+import { billOfMaterials, CATALOGUE, COLOURS, exportLDraw, serializeAssembly, validateAssembly, type PartInstance } from "../packages/renderer/src/assembly";
 
 type Angle = "Front" | "Right" | "Back" | "Left" | "Detail";
 type Photo = { id: string; name: string; angle: Angle; analysis: AnalysedImage };
@@ -20,6 +21,7 @@ const SIZES = {
   Study: { layers: 10, width: 10, depth: 8 },
   Balanced: { layers: 16, width: 16, depth: 12 },
   Display: { layers: 24, width: 24, depth: 18 },
+  Sculpture: { layers: 48, width: 32, depth: 36 },
 } as const;
 
 const download = (name: string, text: string, type: string) => {
@@ -47,9 +49,10 @@ export default function Reconstruction() {
   const [mesh, setMesh] = useState<ParsedMesh | null>(null), [meshVolume, setMeshVolume] = useState<VoxelizedMesh | null>(null);
   const [analysing, setAnalysing] = useState(false), [error, setError] = useState("");
   const [size, setSize] = useState<keyof typeof SIZES>("Balanced"), [hollow, setHollow] = useState(true);
-  const [supports, setSupports] = useState(true), [upAxis, setUpAxis] = useState<UpAxis>("auto"), [colour, setColour] = useState(71);
+  const [supports, setSupports] = useState(true), [upAxis, setUpAxis] = useState<UpAxis>("auto"), [flipUp, setFlipUp] = useState(false), [colour, setColour] = useState(71);
   const [result, setResult] = useState<ReconstructionResult | null>(null), [step, setStep] = useState(0);
   const bom = useMemo(() => result ? billOfMaterials(result.document.parts) : [], [result]);
+  const validationIssues = useMemo(() => result ? validateAssembly(result.document.parts) : [], [result]);
   const invalidate = () => { setResult(null); setMeshVolume(null); };
   const chooseMode = (next: SourceMode) => { setMode(next); setError(""); invalidate(); };
 
@@ -82,7 +85,7 @@ export default function Reconstruction() {
       const settings = SIZES[size]; let generated: ReconstructionResult;
       if (mode === "mesh") {
         if (!mesh) throw new Error("Add an OBJ or STL model first");
-        const volume = voxelizeMesh(mesh, { maxWidthStuds: settings.width, maxDepthStuds: settings.depth, maxHeightLayers: settings.layers, upAxis, hollow, addSupports: supports });
+        const volume = voxelizeMesh(mesh, { maxWidthStuds: settings.width, maxDepthStuds: settings.depth, maxHeightLayers: settings.layers, upAxis, hollow, addSupports: supports, flipUp });
         generated = reconstructFromVoxels(volume, { name: `${mesh.name} brick conversion`, colour }); setMeshVolume(volume);
       } else {
         if (!photos.length) throw new Error("Add at least one clear photo first");
@@ -120,10 +123,10 @@ export default function Reconstruction() {
         <section className="settings-column">
           <div className="section-label"><span>02</span><div><b>Build target</b><small>Choose fidelity and construction style</small></div></div>
           <label className="setting-title">MODEL SIZE</label><div className="size-options">{Object.entries(SIZES).map(([name, value]) => <button key={name} className={size === name ? "selected" : ""} onClick={() => { setSize(name as keyof typeof SIZES); invalidate(); }}><b>{name}</b><span>{value.layers} layers</span><small>up to {value.width} × {value.depth} studs</small></button>)}</div>
-          {mode === "mesh" && <><label className="setting-title" htmlFor="up-axis">VERTICAL / UP AXIS</label><select id="up-axis" className="axis-select" value={upAxis} onChange={event => { setUpAxis(event.target.value as UpAxis); invalidate(); }}><option value="auto">Auto-detect longest axis</option><option value="x">X axis</option><option value="y">Y axis</option><option value="z">Z axis</option></select></>}
+          {mode === "mesh" && <><label className="setting-title" htmlFor="up-axis">VERTICAL / UP AXIS</label><select id="up-axis" className="axis-select" value={upAxis} onChange={event => { setUpAxis(event.target.value as UpAxis); invalidate(); }}><option value="auto">Auto (Y for OBJ, Z for STL)</option><option value="x">X axis</option><option value="y">Y axis</option><option value="z">Z axis</option></select><label className="flip-toggle"><input type="checkbox" checked={flipUp} onChange={event => { setFlipUp(event.target.checked); invalidate(); }} />Flip model upside down</label></>}
           <label className="setting-title">PRIMARY BRICK COLOUR</label><div className="colour-options">{COLOURS.map(value => <button key={value.code} className={colour === value.code ? "selected" : ""} aria-label={value.name} title={value.name} style={{ background: value.hex }} onClick={() => { setColour(value.code); invalidate(); }} />)}</div>
           <label className="hollow-toggle"><input type="checkbox" checked={hollow} onChange={event => { setHollow(event.target.checked); invalidate(); }} /><span><b>Hollow large sections</b><small>Uses fewer parts while preserving the outer shape.</small></span></label>
-          {mode === "mesh" && <label className="hollow-toggle"><input type="checkbox" checked={supports} onChange={event => { setSupports(event.target.checked); invalidate(); }} /><span><b>Add hidden structural supports</b><small>Builds columns beneath overhangs so every generated layer is connected.</small></span></label>}
+          {mode === "mesh" && <label className="hollow-toggle"><input type="checkbox" checked={supports} onChange={event => { setSupports(event.target.checked); invalidate(); }} /><span><b>Add internal reinforcement</b><small>Fills only hidden space already inside the source mesh; it no longer projects every overhang to the base.</small></span></label>}
           <div className="estimate-card"><Sparkles size={18} /><div><b>{sourceLabel}</b><span>{mode === "mesh" ? "The mesh is voxelised at LEGO scale, reinforced, then packed with controlled real brick IDs." : "Photographs estimate the outline only; fine depth and hidden cavities remain simplified."}</span></div></div>
           <button className="generate-button" disabled={!ready || analysing} onClick={generate}><Sparkles size={17} />{result ? "Regenerate model" : "Generate brick model"}<ArrowRight size={17} /></button>
         </section>
@@ -131,8 +134,9 @@ export default function Reconstruction() {
           <div className="section-label"><span>03</span><div><b>Build package</b><small>Model, inventory, and instructions</small></div></div>
           {!result ? <div className="result-empty"><Layers3 size={34} /><b>Your build will appear here</b><span>{mode === "mesh" ? "Add a closed OBJ or STL, choose the build scale, and convert its real 3D volume." : "Add photographs, choose a size, and generate a quick brick study."}</span></div> : <>
             <div className="result-summary"><div><small>PARTS</small><b>{result.document.parts.length}</b></div><div><small>LAYERS</small><b>{result.instructions.length}</b></div><div><small>{mode === "mesh" ? "MESH QUALITY" : "SHAPE CONFIDENCE"}</small><b>{result.confidence}%</b></div></div>
-            <div className="result-valid"><ShieldCheck size={18} /><div><b>Editable build generated</b><span>{hollow ? "Hollow-shell" : "Solid"} construction · {result.occupiedStuds} occupied studs{meshVolume ? ` · ${meshVolume.addedSupportVoxels} support voxels` : ""}</span></div></div>
+            <div className={`result-valid ${validationIssues.length ? "has-warnings" : ""}`}><ShieldCheck size={18} /><div><b>{validationIssues.length ? "Shape generated · structural review needed" : "Connected editable build generated"}</b><span>{hollow ? "Hollow-shell" : "Solid"} construction · {result.occupiedStuds} occupied studs{validationIssues.length ? ` · ${validationIssues.filter(issue => issue.kind === "floating").length} unsupported groups to review` : ""}</span></div></div>
             {meshVolume && <div className="mesh-volume"><span>Converted volume</span><b>{meshVolume.width} × {meshVolume.depth} studs · {meshVolume.height} layers · {meshVolume.upAxis.toUpperCase()} up</b></div>}
+            {mesh && meshVolume && <MeshConversionPreview mesh={mesh} volume={meshVolume} />}
             <div className="result-tabs"><button className="selected">Instructions</button><button onClick={openEditor}>Open 3D editor</button></div>
             <div className="instruction-card"><div className="step-heading"><button disabled={step === 0} onClick={() => setStep(value => value - 1)}>‹</button><span><small>STEP {step + 1} OF {result.instructions.length}</small><b>{result.instructions[step].title}</b></span><button disabled={step === result.instructions.length - 1} onClick={() => setStep(value => value + 1)}>›</button></div><LayerDiagram parts={result.document.parts.filter(part => result.instructions[step].partIds.includes(part.id))} /><ul>{result.instructions[step].summary.map(row => <li key={row.partNumber}><span>Part {row.partNumber}</span><b>× {row.quantity}</b></li>)}</ul></div>
             <div className="mini-bom"><div><b>Complete parts list</b><span>{bom.length} part/colour groups</span></div>{bom.slice(0, 5).map(row => <p key={`${row.partNumber}-${row.colour}`}><i style={{ background: COLOURS.find(value => value.code === row.colour)?.hex }} /><span>{row.partNumber} · {row.name}</span><b>×{row.quantity}</b></p>)}</div>

@@ -70,6 +70,8 @@ The reconstruction workspace now accepts triangulated OBJ and binary or ASCII ST
 
 The volumetric result is packed with controlled real brick IDs and feeds the same exact BOM, layer diagrams, JSON/LDraw exports, validation rules, and 3D editor used by photo reconstruction. Closed, watertight models produce the strongest conversion. Surface texture, colour materials, movable joints, and sub-stud sculpting are not yet represented, and the current controlled palette intentionally favours standard rectangular bricks.
 
+Mesh conversion includes a rotatable side-by-side comparison of the complete source and brick volume. Automatic orientation follows format conventions (Y-up for OBJ and Z-up for STL), with manual axis and upside-down controls. Internal reinforcement is constrained to the original solid volume so overhang supports cannot expand the model's outer silhouette. A Sculpture target provides a higher-resolution 48-layer envelope, and structural warnings are reported honestly when the current rectangular-brick palette cannot support an appendage without altering its shape.
+
 Validate the controlled catalogue against a local official library with:
 ```bash
 node scripts/validate-official-ldraw.mjs data/ldraw/official/ldraw

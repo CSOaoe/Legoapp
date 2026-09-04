@@ -59,7 +59,10 @@ export function validateAssembly(parts:PartInstance[]):ValidationIssue[]{
   const a=boxes.get(parts[i].id),b=boxes.get(parts[j].id);if(a&&b&&footprintOverlap(a,b)&&overlap(a.minY,a.maxY,b.minY,b.maxY))issues.push({kind:"collision",partIds:[parts[i].id,parts[j].id],message:`${parts[i].id} overlaps ${parts[j].id}`});
  }
  const supported=new Set(parts.filter(part=>(boxes.get(part.id)?.minY??1)===0).map(part=>part.id));let changed=true;
- while(changed){changed=false;for(const part of parts){if(supported.has(part.id))continue;const box=boxes.get(part.id);if(!box)continue;const connected=parts.some(base=>{const baseBox=boxes.get(base.id);return supported.has(base.id)&&baseBox&&baseBox.maxY===box.minY&&footprintOverlap(baseBox,box)});if(connected){supported.add(part.id);changed=true}}}
+ // Connectivity is undirected: a lower brick can be tied into the grounded
+ // structure by a later brick placed above it. Walking only upward incorrectly
+ // labelled valid interlocked sculptures as almost entirely floating.
+ while(changed){changed=false;for(const part of parts){if(supported.has(part.id))continue;const box=boxes.get(part.id);if(!box)continue;const connected=parts.some(base=>{const baseBox=boxes.get(base.id);return supported.has(base.id)&&baseBox&&((baseBox.maxY===box.minY)||(box.maxY===baseBox.minY))&&footprintOverlap(baseBox,box)});if(connected){supported.add(part.id);changed=true}}}
  for(const part of parts)if(!supported.has(part.id)&&boxes.has(part.id))issues.push({kind:"floating",partIds:[part.id],message:`${part.id} is not connected to a grounded part`});
  return issues;
 }
