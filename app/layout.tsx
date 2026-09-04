@@ -6,8 +6,8 @@ import "./assembly.css";
 import "./reconstruction.css";
 
 export const metadata: Metadata = {
-  title: "BrickForge AI — Photo to Brick",
-  description: "Turn multi-view photographs into editable brick studies, parts lists, and build steps.",
+  title: "BrickForge AI — 3D Model to Brick",
+  description: "Convert OBJ, STL, or multi-view photographs into editable brick models, parts lists, and build steps.",
   other: {
     "codex-preview": "development",
   },

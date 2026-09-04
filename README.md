@@ -1,7 +1,7 @@
 # BrickForge AI
-**Turn any image into a buildable brick model.**
+**Turn a 3D model or photograph into a buildable brick design.**
 
-Milestones 0–3.1 establish a modular monorepo, tested Parts Engine, real LDraw resolver, interactive multi-part assembly workspace, and the first local multi-view photo reconstruction pipeline.
+Milestones 0–3.2 establish a modular monorepo, tested Parts Engine, real LDraw resolver, interactive multi-part assembly workspace, local multi-view photo reconstruction, and direct OBJ/STL mesh conversion.
 
 ## Product target
 BrickForge will accept one or, preferably, several photographs of the same object from different angles. The reconstruction pipeline will isolate the subject, estimate a shared 3D volume, approximate it with available brick geometry at the chosen size/detail level, validate the structure, and produce:
@@ -65,9 +65,14 @@ Study, Balanced, and Display targets trade part count for silhouette resolution.
 
 This is deliberately an honest silhouette milestone: it captures proportion and outline but does not yet infer concave hidden geometry, curved surface detail, texture, or semantic features. Those require calibrated multi-view correspondence, depth estimation, and a broader slope/hinge/curved-parts catalogue.
 
+## Milestone 3.2 OBJ/STL conversion
+The reconstruction workspace now accepts triangulated OBJ and binary or ASCII STL files. Mesh parsing, watertightness analysis, voxelisation, hollow-shell extraction, and hidden support generation all run locally in the browser. The selected Study, Balanced, or Display envelope scales the mesh uniformly into a LEGO stud-and-layer volume, and the user can override the detected vertical axis when the source model has a different orientation.
+
+The volumetric result is packed with controlled real brick IDs and feeds the same exact BOM, layer diagrams, JSON/LDraw exports, validation rules, and 3D editor used by photo reconstruction. Closed, watertight models produce the strongest conversion. Surface texture, colour materials, movable joints, and sub-stud sculpting are not yet represented, and the current controlled palette intentionally favours standard rectangular bricks.
+
 Validate the controlled catalogue against a local official library with:
 ```bash
 node scripts/validate-official-ldraw.mjs data/ldraw/official/ldraw
 ```
 
-Next milestones: add interactive crop/masking corrections, camera-angle calibration, depth-assisted reconstruction, a broader verified parts palette, stronger structural optimisation, and illustrated instruction pages.
+Next milestones: add a live source-mesh preview and orientation controls, slopes/curves/hinges, colour-material mapping, stronger structural optimisation, manual voxel cleanup, and printable illustrated instruction pages.

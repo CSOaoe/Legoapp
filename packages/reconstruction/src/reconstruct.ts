@@ -4,6 +4,7 @@ export type SilhouetteProfile={widths:number[];confidence:number};
 export type ReconstructionOptions={name:string;heightLayers:number;maxWidthStuds:number;maxDepthStuds:number;colour:number;hollow:boolean};
 export type InstructionStep={number:number;layer:number;title:string;partIds:string[];summary:{partNumber:string;quantity:number}[]};
 export type ReconstructionResult={document:AssemblyDocument;instructions:InstructionStep[];occupiedStuds:number;confidence:number};
+export type VoxelReconstruction={width:number;depth:number;height:number;layers:Set<string>[];confidence:number};
 
 const PIECES=[
  {partNumber:"3001",x:4,z:2,rotation:0 as QuarterTurn},{partNumber:"3001",x:2,z:4,rotation:90 as QuarterTurn},
@@ -41,4 +42,23 @@ export function reconstructFromProfiles(front:SilhouetteProfile,side:SilhouetteP
   steps.push({number:layer+1,layer,title:`Build layer ${layer+1} of ${options.heightLayers}`,partIds:layerParts.map(part=>part.id),summary:[...counts].map(([partNumber,quantity])=>({partNumber,quantity})).sort((a,b)=>a.partNumber.localeCompare(b.partNumber))});
  }
  return{document:{schemaVersion:1,name:options.name,parts},instructions:steps,occupiedStuds,confidence:Math.round(Math.min(front.confidence,side.confidence)*100)};
+}
+
+export function reconstructFromVoxels(voxels:VoxelReconstruction,options:{name:string;colour:number}):ReconstructionResult{
+ const parts:PartInstance[]=[],steps:InstructionStep[]=[];let occupiedStuds=0,serial=1;
+ for(let layer=0;layer<voxels.height;layer++){
+  const remaining=new Set(voxels.layers[layer]),layerParts:PartInstance[]=[];
+  const candidates=layer%2?[...PIECES.slice(1),PIECES[0]]:PIECES;
+  for(let z=0;z<voxels.depth;z++)for(let x=0;x<voxels.width;x++)if(remaining.has(key(x,z))){
+   const piece=candidates.find(item=>{for(let dz=0;dz<item.z;dz++)for(let dx=0;dx<item.x;dx++)if(!remaining.has(key(x+dx,z+dz)))return false;return true});
+   if(!piece){remaining.delete(key(x,z));continue}
+   for(let dz=0;dz<piece.z;dz++)for(let dx=0;dx<piece.x;dx++)remaining.delete(key(x+dx,z+dz));
+   const part:PartInstance={id:`mesh-${serial++}`,partNumber:piece.partNumber,position:[(-voxels.width/2+x+piece.x/2)*20,layer*24,(-voxels.depth/2+z+piece.z/2)*20],rotation:piece.rotation,colour:options.colour};
+   parts.push(part);layerParts.push(part);occupiedStuds+=piece.x*piece.z;
+  }
+  if(!layerParts.length)continue;
+  const counts=new Map<string,number>();for(const part of layerParts)counts.set(part.partNumber,(counts.get(part.partNumber)??0)+1);
+  steps.push({number:steps.length+1,layer,title:`Build mesh layer ${layer+1} of ${voxels.height}`,partIds:layerParts.map(part=>part.id),summary:[...counts].map(([partNumber,quantity])=>({partNumber,quantity})).sort((a,b)=>a.partNumber.localeCompare(b.partNumber))});
+ }
+ return{document:{schemaVersion:1,name:options.name,parts},instructions:steps,occupiedStuds,confidence:voxels.confidence};
 }
