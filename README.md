@@ -1,43 +1,66 @@
 # BrickForge AI
+**Turn any image into a buildable brick model.**
 
-BrickForge AI is a web-first toolkit for designing buildable brick models. This repository delivers Milestones 0–1: a catalogue-backed Parts Engine, REST API, import CLI, SQLite database, and minimal Next.js workspace shell.
+Milestones 0–2.3 establish a modular monorepo, tested Parts Engine, real LDraw resolver, and interactive multi-part assembly workspace. Image reconstruction, voxelisation, and generated instructions remain later milestones.
 
-## Quick start
+## Product target
+BrickForge will accept one or, preferably, several photographs of the same object from different angles. The reconstruction pipeline will isolate the subject, estimate a shared 3D volume, approximate it with available brick geometry at the chosen size/detail level, validate the structure, and produce:
 
-### API and CLI
+- an editable 3D LEGO-style model;
+- an exact grouped parts list with colours and quantities;
+- collision and structural warnings;
+- numbered, layer-aware building instructions; and
+- portable project, LDraw, and instruction exports.
 
-Requires Python 3.11+.
+Multi-view photo sets with consistent lighting and front, rear, left, and right coverage give the strongest reconstruction input. Highly detailed sculptures are intentionally converted into buildable brick interpretations; output fidelity depends on target size, selected parts, and image coverage.
 
-```powershell
-cd apps/api
+## Setup
+```bash
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-brickforge build-parts-db --database ../../data/generated/brickforge.db
-brickforge import-rebrickable ../../data/rebrickable --database ../../data/generated/brickforge.db
-brickforge import-ldraw ../../data/ldraw --database ../../data/generated/brickforge.db
-brickforge validate-parts --database ../../data/generated/brickforge.db
-uvicorn brickforge_api.main:app --reload
-```
-
-The API is available at `http://127.0.0.1:8000/docs`. Set `BRICKFORGE_DB_PATH` to use a different database path.
-
-### Web shell
-
-```powershell
-cd apps/web
+source .venv/bin/activate
+pip install -e '.[dev]'
 npm install
-npm run dev
 ```
 
-## Catalogue refresh
+## Catalogue workflow
+```bash
+brickforge build-parts-db
+brickforge import-rebrickable data/rebrickable
+brickforge import-ldraw data/ldraw
+brickforge validate-parts
+```
+Required Rebrickable files: `parts.csv`, `part_categories.csv`, and `colors.csv`. Colour availability is populated from `elements.csv` and/or `inventory_parts.csv`. Refresh by replacing CSVs and rerunning the importer.
 
-Download the Rebrickable CSV export into `data/rebrickable/`; the importer discovers `parts.csv`, `colors.csv`, and `part_relationships.csv` case-insensitively. Place official LDraw `.dat` files under `data/ldraw/parts/`. Run the imports again; they are idempotent.
+## Run and test
+```bash
+uvicorn apps.api.main:app --reload --port 8000
+npm run dev
+pytest
+npm test
+```
 
-See [architecture.md](docs/architecture.md), [catalogue-sources.md](docs/catalogue-sources.md), and [THIRD_PARTY.md](docs/THIRD_PARTY.md).
+`GET /parts/search?q=Brick%202%20x%204` returns a record with internal/external IDs, dimensions, category, available geometry and Core Set status. Interactive API documentation is at `http://localhost:8000/docs`.
 
-## Current limitations
+## Known limitations
+- The initial reviewed Core Set contains 15 common bricks and plates; reaching the 300–500 target is a deliberate metadata review task.
+- LDraw aliases/decorated variants are not guessed.
+- Dimensions are curated rather than inferred from meshes.
+- The deployed web shell uses representative Milestone 1 data; production FastAPI hosting and live frontend wiring remain separate.
 
-- The MVP uses declarative dimensions for a curated core set; arbitrary LDraw geometry is scanned but not geometrically interpreted.
-- Rebrickable colour availability is imported when a `part_colors.csv` file is provided; otherwise standard core colours are seeded for core parts.
-- Brick placement, mesh processing, rendering of LDraw geometry, and instructions are deliberately out of scope until Milestone 2+.
+## Milestone 2 viewer
+The web workspace includes a React Three Fiber viewer with orbit, pan, zoom, perspective/orthographic cameras, wireframe mode, reset and an LDraw file picker. The parser renders direct Type 3 triangles and Type 4 quads, tracks Type 2 edges, and explicitly warns when Type 1 subfiles need a library resolver. The initial object is a BrickForge-authored LDraw reference fixture, not official catalogue geometry.
+
+## Milestone 2.1 resolver
+The viewer can load an installed LDraw directory, index top-level official parts and recursively resolve Type 1 references from both `parts/` and `p/`. Nested affine transforms and colour 16 inheritance are applied. Missing files, cycles and excessive reference depth are reported as validation warnings.
+
+## Milestone 2.3 assembly workspace
+The web workspace now builds real multi-part models from a controlled catalogue of standard bricks (`3001`–`3005`) and plates (`3020`–`3024`). Load an official LDraw folder once and the resolver caches each selected part's geometry for reuse across instances.
+
+The editor supports add, select, grid movement, 90-degree rotation, colour changes, duplication, deletion, and reset. Its live validator reports collisions, off-grid positions, and floating components. A grouped bill of materials updates alongside the build, and complete assemblies round-trip through versioned JSON or export as LDraw Type 1 references.
+
+Validate the controlled catalogue against a local official library with:
+```bash
+node scripts/validate-official-ldraw.mjs data/ldraw/official/ldraw
+```
+
+Next milestones: persist projects and expand the verified parts palette, then add multi-view image intake, subject masking, 3D reconstruction, brick optimisation, stability passes, and generated instructions.

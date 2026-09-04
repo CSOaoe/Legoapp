@@ -1,7 +1,6 @@
 # Third-party data and licences
+BrickForge AI is independent and is not sponsored, authorised or endorsed by the LEGO Group.
 
-BrickForge is independent software and is not sponsored, authorised, or endorsed by the LEGO Group. “LEGO” is a trademark of the LEGO Group.
+Catalogue metadata may be imported from [Rebrickable Downloads](https://rebrickable.com/downloads/) and remains subject to Rebrickable's current terms. Geometry may be imported from the [LDraw Parts Library](https://www.ldraw.org/) and remains subject to the LDraw Contributor Agreement and library licence terms. Neither catalogue is included here.
 
-- Rebrickable catalogue data: obtain and use under the terms published by Rebrickable; retain applicable attribution.
-- LDraw parts library: obtain and use under the LDraw.org licence and attribution requirements. LDraw geometry is referenced by path and is not bundled by this repository.
-- BrickLink support is intentionally an optional future export/integration layer; no HTML scraping is used.
+BrickLink is reserved as an optional integration/export layer. This milestone performs no HTML scraping and bundles no BrickLink data. LEGO is a trademark of the LEGO Group.

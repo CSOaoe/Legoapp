@@ -1,0 +1,4 @@
+part_num,name,part_cat_id,part_material
+3001,Brick 2 x 4,11,Plastic
+3020,Plate 2 x 4,14,Plastic
+9999,Test Unmapped Part,11,Plastic
