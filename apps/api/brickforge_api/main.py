@@ -1,17 +1,22 @@
 from __future__ import annotations
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from .database import connect, initialise
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DB_PATH = Path(os.getenv('BRICKFORGE_DB_PATH', PROJECT_ROOT / 'data/generated/brickforge.db'))
-app = FastAPI(title='BrickForge Parts API', version='0.1.0')
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialise(DB_PATH)
+    yield
+
+app = FastAPI(title='BrickForge Parts API', version='0.1.0', lifespan=lifespan)
 
 def _part(row):
     item = dict(row); item['core'] = bool(item.pop('allowed_for_auto_generation')); item['active'] = bool(item['active']); return item
-@app.on_event('startup')
-def startup(): initialise(DB_PATH)
 @app.get('/health')
 def health(): return {'status': 'ok'}
 @app.get('/parts')

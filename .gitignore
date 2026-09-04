@@ -1,5 +1,8 @@
 .venv/
+.tools/
 __pycache__/
+.pytest_cache/
+.test-tmp*/
 *.py[cod]
 node_modules/
 .next/

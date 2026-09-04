@@ -1,5 +1,7 @@
 from pathlib import Path
 from fastapi.testclient import TestClient
+from typer.testing import CliRunner
+from brickforge_api.cli import app as cli
 from brickforge_api.database import initialise
 from brickforge_api.importers import build_core_parts, import_ldraw, import_rebrickable
 
@@ -19,3 +21,10 @@ def test_csv_and_ldraw_import(tmp_path):
     assert import_rebrickable(source, db)['parts'] == 1
     ldraw = tmp_path / 'ldraw' / 'parts'; ldraw.mkdir(parents=True); (ldraw / '3001.dat').write_text('0 Brick', encoding='utf8')
     assert import_ldraw(ldraw.parent, db)['mapped'] == 1
+
+def test_cli_build_and_validate(tmp_path):
+    database = tmp_path / 'parts.db'
+    runner = CliRunner()
+    assert runner.invoke(cli, ['build-parts-db', '--database', str(database)]).exit_code == 0
+    result = runner.invoke(cli, ['validate-parts', '--database', str(database)])
+    assert result.exit_code == 0 and 'VALID' in result.output

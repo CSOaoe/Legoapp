@@ -21,3 +21,6 @@ def validate(database: Path = typer.Option(DEFAULT_DB)):
         bad = db.execute('SELECT count(*) FROM parts WHERE allowed_for_auto_generation=1 AND (width_studs IS NULL OR length_studs IS NULL OR height_plates IS NULL)').fetchone()[0]
     if bad: raise typer.Exit(code=1)
     typer.echo(f'VALID: {core} core parts have dimensions.')
+
+if __name__ == '__main__':
+    app()
