@@ -25,7 +25,7 @@ export const COLOURS=[
 
 const definition=(partNumber:string)=>CATALOGUE.find(part=>part.partNumber===partNumber);
 export const snap=(value:number,step:number)=>{const result=Math.round(value/step)*step;return Object.is(result,-0)?0:result};
-export function snapPosition(position:AssemblyPosition):AssemblyPosition{return[snap(position[0],STUD_LDU),snap(position[1],PLATE_LDU),snap(position[2],STUD_LDU)]}
+export function snapPosition(position:AssemblyPosition):AssemblyPosition{return[snap(position[0],STUD_LDU/2),snap(position[1],PLATE_LDU),snap(position[2],STUD_LDU/2)]}
 export function nextPartId(parts:PartInstance[]){let index=1;const ids=new Set(parts.map(part=>part.id));while(ids.has(`brick-${index}`))index++;return `brick-${index}`}
 export function createPart(parts:PartInstance[],partNumber="3001",position:AssemblyPosition=[0,0,0],colour=4):PartInstance{
  if(!definition(partNumber))throw new Error(`Unknown controlled part: ${partNumber}`);
@@ -53,7 +53,7 @@ export function validateAssembly(parts:PartInstance[]):ValidationIssue[]{
  const issues:ValidationIssue[]=[],boxes=new Map(parts.map(part=>[part.id,partBox(part)]));
  for(const part of parts){
   if(!definition(part.partNumber))issues.push({kind:"missing-part",partIds:[part.id],message:`${part.id} uses unsupported part ${part.partNumber}`});
-  if(part.position[0]%STUD_LDU||part.position[1]%PLATE_LDU||part.position[2]%STUD_LDU)issues.push({kind:"off-grid",partIds:[part.id],message:`${part.id} is off the brick grid`});
+  if(part.position[0]%(STUD_LDU/2)||part.position[1]%PLATE_LDU||part.position[2]%(STUD_LDU/2))issues.push({kind:"off-grid",partIds:[part.id],message:`${part.id} is off the brick grid`});
  }
  for(let i=0;i<parts.length;i++)for(let j=i+1;j<parts.length;j++){
   const a=boxes.get(parts[i].id),b=boxes.get(parts[j].id);if(a&&b&&footprintOverlap(a,b)&&overlap(a.minY,a.maxY,b.minY,b.maxY))issues.push({kind:"collision",partIds:[parts[i].id,parts[j].id],message:`${parts[i].id} overlaps ${parts[j].id}`});

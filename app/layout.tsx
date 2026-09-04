@@ -3,10 +3,11 @@ import "./globals.css";
 import "./viewer.css";
 import "./resolver.css";
 import "./assembly.css";
+import "./reconstruction.css";
 
 export const metadata: Metadata = {
-  title: "BrickForge AI — Assembly Workspace",
-  description: "Build, validate, and export real multi-part brick models.",
+  title: "BrickForge AI — Photo to Brick",
+  description: "Turn multi-view photographs into editable brick studies, parts lists, and build steps.",
   other: {
     "codex-preview": "development",
   },

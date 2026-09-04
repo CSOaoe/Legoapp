@@ -1,7 +1,7 @@
 # BrickForge AI
 **Turn any image into a buildable brick model.**
 
-Milestones 0–2.3 establish a modular monorepo, tested Parts Engine, real LDraw resolver, and interactive multi-part assembly workspace. Image reconstruction, voxelisation, and generated instructions remain later milestones.
+Milestones 0–3.1 establish a modular monorepo, tested Parts Engine, real LDraw resolver, interactive multi-part assembly workspace, and the first local multi-view photo reconstruction pipeline.
 
 ## Product target
 BrickForge will accept one or, preferably, several photographs of the same object from different angles. The reconstruction pipeline will isolate the subject, estimate a shared 3D volume, approximate it with available brick geometry at the chosen size/detail level, validate the structure, and produce:
@@ -58,9 +58,16 @@ The web workspace now builds real multi-part models from a controlled catalogue 
 
 The editor supports add, select, grid movement, 90-degree rotation, colour changes, duplication, deletion, and reset. Its live validator reports collisions, off-grid positions, and floating components. A grouped bill of materials updates alongside the build, and complete assemblies round-trip through versioned JSON or export as LDraw Type 1 references.
 
+## Milestone 3.1 photo reconstruction
+The root workspace accepts up to eight JPG, PNG, or WebP references and lets each image be identified as front, rear, left, right, or detail coverage. Processing stays in the browser. BrickForge estimates a foreground silhouette against the image background, merges opposing views, constructs a shared volumetric profile, and greedily tiles each stable layer with supported standard brick sizes.
+
+Study, Balanced, and Display targets trade part count for silhouette resolution. Solid and hollow-shell construction are supported. Every generated result includes an exact BOM, a layer-by-layer instruction sequence, a downloadable build package, LDraw export, and a handoff to the full 3D assembly editor.
+
+This is deliberately an honest silhouette milestone: it captures proportion and outline but does not yet infer concave hidden geometry, curved surface detail, texture, or semantic features. Those require calibrated multi-view correspondence, depth estimation, and a broader slope/hinge/curved-parts catalogue.
+
 Validate the controlled catalogue against a local official library with:
 ```bash
 node scripts/validate-official-ldraw.mjs data/ldraw/official/ldraw
 ```
 
-Next milestones: persist projects and expand the verified parts palette, then add multi-view image intake, subject masking, 3D reconstruction, brick optimisation, stability passes, and generated instructions.
+Next milestones: add interactive crop/masking corrections, camera-angle calibration, depth-assisted reconstruction, a broader verified parts palette, stronger structural optimisation, and illustrated instruction pages.

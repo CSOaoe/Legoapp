@@ -4,8 +4,8 @@ import {billOfMaterials,createPart,defaultAssembly,exportLDraw,parseAssembly,ser
 
 test("creates deterministic, snapped part instances",()=>{
  const part=createPart([{id:"brick-1",partNumber:"3001",position:[0,0,0],rotation:0,colour:4}],"3021",[11,9,-11],1);
- assert.equal(part.id,"brick-2");assert.deepEqual(part.position,[20,8,-20]);
- assert.deepEqual(snapPosition([-9,3,29]),[0,0,20]);
+ assert.equal(part.id,"brick-2");assert.deepEqual(part.position,[10,8,-10]);
+ assert.deepEqual(snapPosition([-9,3,29]),[-10,0,30]);
 });
 
 test("the interlocking reference assembly is connected and collision-free",()=>{
