@@ -30,6 +30,14 @@ test("recognises a lower brick tied to the base by a bridging brick above",()=>{
  assert.deepEqual(validateAssembly(parts),[]);
 });
 
+test("does not treat a studless slope surface as a legal support",()=>{
+ const parts=[
+  {id:"slope",partNumber:"3039",position:[0,0,0],rotation:0,colour:4},
+  {id:"brick",partNumber:"3005",position:[0,24,0],rotation:0,colour:4},
+ ];
+ assert.equal(validateAssembly(parts).some(issue=>issue.kind==="floating"&&issue.partIds.includes("brick")),true);
+});
+
 test("round-trips versioned JSON and rejects unsupported parts",()=>{
  const document=defaultAssembly();assert.deepEqual(parseAssembly(serializeAssembly(document)),document);
  assert.throws(()=>parseAssembly('{"schemaVersion":1,"name":"bad","parts":[{"id":"x","partNumber":"9999","position":[0,0,0],"rotation":0,"colour":4}]}'),/Invalid part/);

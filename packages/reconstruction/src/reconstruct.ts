@@ -1,9 +1,9 @@
-import type {AssemblyDocument,PartInstance,QuarterTurn} from "../../renderer/src/assembly";
+import {CATALOGUE,type AssemblyDocument,type PartInstance,type QuarterTurn} from "../../renderer/src/assembly.ts";
 
 export type SilhouetteProfile={widths:number[];offsets?:number[];aspectRatio?:number;confidence:number};
 export type ReconstructionOptions={name:string;heightLayers:number;maxWidthStuds:number;maxDepthStuds:number;colour:number};
 export type InstructionStep={number:number;layer:number;title:string;partIds:string[];summary:{partNumber:string;quantity:number}[]};
-export type ReconstructionResult={document:AssemblyDocument;instructions:InstructionStep[];occupiedStuds:number;sourceStuds:number;shapeCoverage:number;confidence:number};
+export type ReconstructionResult={document:AssemblyDocument;instructions:InstructionStep[];occupiedStuds:number;sourceStuds:number;shapeCoverage:number;confidence:number;detailParts:number;partFamilies:string[]};
 export type VoxelReconstruction={width:number;depth:number;height:number;layers:Set<string>[];confidence:number};
 
 type Piece={partNumber:string;x:number;z:number;rotation:QuarterTurn};
@@ -18,6 +18,21 @@ const PIECES:Piece[]=[
 
 const sample=(values:number[],position:number)=>{if(!values.length)return 0;const scaled=Math.max(0,Math.min(values.length-1,position*(values.length-1))),low=Math.floor(scaled),high=Math.ceil(scaled),mix=scaled-low;return values[low]*(1-mix)+values[high]*mix};
 const key=(x:number,z:number)=>`${x}:${z}`;
+
+function surfacePart(piece:Piece,x:number,z:number,layer:number,voxels:VoxelReconstruction):{partNumber:string;rotation:QuarterTurn}{
+ const current=voxels.layers[layer],above=voxels.layers[layer+1];let boundaryEdges=0,left=0,right=0,front=0,back=0;
+ for(let dz=0;dz<piece.z;dz++)for(let dx=0;dx<piece.x;dx++){
+  const px=x+dx,pz=z+dz;if(above?.has(key(px,pz)))return{partNumber:piece.partNumber,rotation:piece.rotation};
+  if(!current.has(key(px-1,pz))){left++;boundaryEdges++}if(!current.has(key(px+1,pz))){right++;boundaryEdges++}
+  if(!current.has(key(px,pz-1))){front++;boundaryEdges++}if(!current.has(key(px,pz+1))){back++;boundaryEdges++}
+ }
+ if(!boundaryEdges)return{partNumber:piece.partNumber,rotation:piece.rotation};
+ const area=piece.x*piece.z,curved=layer%2===0;
+ const partNumber=area===8?"3037":area===6?"3038":area===4?(curved?"15068":"3039"):area===2?(curved?"11477":"3040b"):"54200";
+ let rotation=piece.rotation;
+ if(piece.x>=piece.z)rotation=left>right?180:0;else rotation=front>back?270:90;
+ return{partNumber,rotation};
+}
 
 function packInterlocked(voxels:VoxelReconstruction,options:{name:string;colour:number}):ReconstructionResult{
  const parts:PartInstance[]=[],steps:InstructionStep[]=[];
@@ -46,7 +61,8 @@ function packInterlocked(voxels:VoxelReconstruction,options:{name:string;colour:
    if(!best)break;
    const {piece,x,z}=best;
    for(let dz=0;dz<piece.z;dz++)for(let dx=0;dx<piece.x;dx++)remaining.delete(key(x+dx,z+dz));
-   const part:PartInstance={id:`brick-${serial++}`,partNumber:piece.partNumber,position:[(-voxels.width/2+x+piece.x/2)*20,layer*24,(-voxels.depth/2+z+piece.z/2)*20],rotation:piece.rotation,colour:options.colour};
+   const surface=surfacePart(piece,x,z,layer,voxels);
+   const part:PartInstance={id:`brick-${serial++}`,partNumber:surface.partNumber,position:[(-voxels.width/2+x+piece.x/2)*20,layer*24,(-voxels.depth/2+z+piece.z/2)*20],rotation:surface.rotation,colour:options.colour};
    layerPlaced.push({part,layer,x,z,width:piece.x,depth:piece.z});parts.push(part);occupiedStuds+=piece.x*piece.z;
   }
   if(!layerPlaced.length){previousCells=new Set<string>();previousOwners=new Map<string,string>();continue}
@@ -56,7 +72,9 @@ function packInterlocked(voxels:VoxelReconstruction,options:{name:string;colour:
   steps.push({number:steps.length+1,layer,title:`Interlock layer ${layer+1} of ${voxels.height}`,partIds:layerPlaced.map(item=>item.part.id),summary:[...counts].map(([partNumber,quantity])=>({partNumber,quantity})).sort((a,b)=>a.partNumber.localeCompare(b.partNumber))});
  }
  const shapeCoverage=sourceStuds?Math.round(occupiedStuds/sourceStuds*100):0;
- return{document:{schemaVersion:1,name:options.name,parts},instructions:steps,occupiedStuds,sourceStuds,shapeCoverage,confidence:voxels.confidence};
+ const families=[...new Set(parts.map(part=>CATALOGUE.find(item=>item.partNumber===part.partNumber)?.family).filter((family):family is string=>Boolean(family)))];
+ const detailParts=parts.filter(part=>CATALOGUE.find(item=>item.partNumber===part.partNumber)?.surface!=="flat").length;
+ return{document:{schemaVersion:1,name:options.name,parts},instructions:steps,occupiedStuds,sourceStuds,shapeCoverage,confidence:voxels.confidence,detailParts,partFamilies:families};
 }
 
 export function reconstructFromProfiles(front:SilhouetteProfile,side:SilhouetteProfile,options:ReconstructionOptions):ReconstructionResult{

@@ -1,22 +1,33 @@
 export type QuarterTurn=0|90|180|270;
 export type AssemblyPosition=[number,number,number];
-export type PartDefinition={partNumber:string;name:string;widthStuds:number;lengthStuds:number;heightPlates:number;file:string};
+export type PartFamily="brick"|"plate"|"slope"|"curved-slope"|"tile"|"snot"|"technic";
+export type PartDefinition={partNumber:string;name:string;widthStuds:number;lengthStuds:number;heightPlates:number;file:string;family:PartFamily;topConnection:"studs"|"none";bottomConnection:"tubes"|"none";surface:"flat"|"angled"|"curved"};
 export type PartInstance={id:string;partNumber:string;position:AssemblyPosition;rotation:QuarterTurn;colour:number};
 export type AssemblyDocument={schemaVersion:1;name:string;parts:PartInstance[]};
 export type ValidationIssue={kind:"collision"|"floating"|"off-grid"|"missing-part";partIds:string[];message:string};
 
 export const STUD_LDU=20,PLATE_LDU=8;
 export const CATALOGUE:PartDefinition[]=[
- {partNumber:"3001",name:"Brick 2 × 4",widthStuds:2,lengthStuds:4,heightPlates:3,file:"parts/3001.dat"},
- {partNumber:"3002",name:"Brick 2 × 3",widthStuds:2,lengthStuds:3,heightPlates:3,file:"parts/3002.dat"},
- {partNumber:"3003",name:"Brick 2 × 2",widthStuds:2,lengthStuds:2,heightPlates:3,file:"parts/3003.dat"},
- {partNumber:"3004",name:"Brick 1 × 2",widthStuds:1,lengthStuds:2,heightPlates:3,file:"parts/3004.dat"},
- {partNumber:"3005",name:"Brick 1 × 1",widthStuds:1,lengthStuds:1,heightPlates:3,file:"parts/3005.dat"},
- {partNumber:"3020",name:"Plate 2 × 4",widthStuds:2,lengthStuds:4,heightPlates:1,file:"parts/3020.dat"},
- {partNumber:"3021",name:"Plate 2 × 3",widthStuds:2,lengthStuds:3,heightPlates:1,file:"parts/3021.dat"},
- {partNumber:"3022",name:"Plate 2 × 2",widthStuds:2,lengthStuds:2,heightPlates:1,file:"parts/3022.dat"},
- {partNumber:"3023",name:"Plate 1 × 2",widthStuds:1,lengthStuds:2,heightPlates:1,file:"parts/3023.dat"},
- {partNumber:"3024",name:"Plate 1 × 1",widthStuds:1,lengthStuds:1,heightPlates:1,file:"parts/3024.dat"},
+ {partNumber:"3001",name:"Brick 2 × 4",widthStuds:2,lengthStuds:4,heightPlates:3,file:"parts/3001.dat",family:"brick",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3002",name:"Brick 2 × 3",widthStuds:2,lengthStuds:3,heightPlates:3,file:"parts/3002.dat",family:"brick",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3003",name:"Brick 2 × 2",widthStuds:2,lengthStuds:2,heightPlates:3,file:"parts/3003.dat",family:"brick",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3004",name:"Brick 1 × 2",widthStuds:1,lengthStuds:2,heightPlates:3,file:"parts/3004.dat",family:"brick",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3005",name:"Brick 1 × 1",widthStuds:1,lengthStuds:1,heightPlates:3,file:"parts/3005.dat",family:"brick",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3020",name:"Plate 2 × 4",widthStuds:2,lengthStuds:4,heightPlates:1,file:"parts/3020.dat",family:"plate",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3021",name:"Plate 2 × 3",widthStuds:2,lengthStuds:3,heightPlates:1,file:"parts/3021.dat",family:"plate",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3022",name:"Plate 2 × 2",widthStuds:2,lengthStuds:2,heightPlates:1,file:"parts/3022.dat",family:"plate",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3023",name:"Plate 1 × 2",widthStuds:1,lengthStuds:2,heightPlates:1,file:"parts/3023.dat",family:"plate",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3024",name:"Plate 1 × 1",widthStuds:1,lengthStuds:1,heightPlates:1,file:"parts/3024.dat",family:"plate",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3037",name:"Slope 45 2 × 4",widthStuds:2,lengthStuds:4,heightPlates:3,file:"parts/3037.dat",family:"slope",topConnection:"none",bottomConnection:"tubes",surface:"angled"},
+ {partNumber:"3038",name:"Slope 45 2 × 3",widthStuds:2,lengthStuds:3,heightPlates:3,file:"parts/3038.dat",family:"slope",topConnection:"none",bottomConnection:"tubes",surface:"angled"},
+ {partNumber:"3039",name:"Slope 45 2 × 2",widthStuds:2,lengthStuds:2,heightPlates:3,file:"parts/3039.dat",family:"slope",topConnection:"none",bottomConnection:"tubes",surface:"angled"},
+ {partNumber:"3040b",name:"Slope 45 1 × 2",widthStuds:1,lengthStuds:2,heightPlates:3,file:"parts/3040b.dat",family:"slope",topConnection:"none",bottomConnection:"tubes",surface:"angled"},
+ {partNumber:"54200",name:"Slope 30 1 × 1",widthStuds:1,lengthStuds:1,heightPlates:2,file:"parts/54200.dat",family:"slope",topConnection:"none",bottomConnection:"tubes",surface:"angled"},
+ {partNumber:"11477",name:"Curved slope 1 × 2",widthStuds:1,lengthStuds:2,heightPlates:3,file:"parts/11477.dat",family:"curved-slope",topConnection:"none",bottomConnection:"tubes",surface:"curved"},
+ {partNumber:"15068",name:"Curved slope 2 × 2",widthStuds:2,lengthStuds:2,heightPlates:3,file:"parts/15068.dat",family:"curved-slope",topConnection:"none",bottomConnection:"tubes",surface:"curved"},
+ {partNumber:"3069b",name:"Tile 1 × 2",widthStuds:1,lengthStuds:2,heightPlates:1,file:"parts/3069b.dat",family:"tile",topConnection:"none",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"3068b",name:"Tile 2 × 2",widthStuds:2,lengthStuds:2,heightPlates:1,file:"parts/3068b.dat",family:"tile",topConnection:"none",bottomConnection:"tubes",surface:"flat"},
+ {partNumber:"87087",name:"Modified brick 1 × 1 with side stud",widthStuds:1,lengthStuds:1,heightPlates:3,file:"parts/87087.dat",family:"snot",topConnection:"studs",bottomConnection:"tubes",surface:"flat"},
 ];
 export const COLOURS=[
  {code:4,name:"Red",hex:"#c91a09"},{code:1,name:"Blue",hex:"#0055bf"},{code:2,name:"Green",hex:"#237841"},
@@ -62,7 +73,7 @@ export function validateAssembly(parts:PartInstance[]):ValidationIssue[]{
  // Connectivity is undirected: a lower brick can be tied into the grounded
  // structure by a later brick placed above it. Walking only upward incorrectly
  // labelled valid interlocked sculptures as almost entirely floating.
- while(changed){changed=false;for(const part of parts){if(supported.has(part.id))continue;const box=boxes.get(part.id);if(!box)continue;const connected=parts.some(base=>{const baseBox=boxes.get(base.id);return supported.has(base.id)&&baseBox&&((baseBox.maxY===box.minY)||(box.maxY===baseBox.minY))&&footprintOverlap(baseBox,box)});if(connected){supported.add(part.id);changed=true}}}
+ while(changed){changed=false;for(const part of parts){if(supported.has(part.id))continue;const box=boxes.get(part.id),partDefinition=definition(part.partNumber);if(!box||!partDefinition)continue;const connected=parts.some(base=>{const baseBox=boxes.get(base.id),baseDefinition=definition(base.partNumber);if(!supported.has(base.id)||!baseBox||!baseDefinition||!footprintOverlap(baseBox,box))return false;const baseBelow=baseBox.maxY===box.minY&&baseDefinition.topConnection!=="none"&&partDefinition.bottomConnection!=="none";const partBelow=box.maxY===baseBox.minY&&partDefinition.topConnection!=="none"&&baseDefinition.bottomConnection!=="none";return baseBelow||partBelow});if(connected){supported.add(part.id);changed=true}}}
  for(const part of parts)if(!supported.has(part.id)&&boxes.has(part.id))issues.push({kind:"floating",partIds:[part.id],message:`${part.id} is not connected to a grounded part`});
  return issues;
 }

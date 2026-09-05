@@ -59,7 +59,7 @@ The runtime, model cache, and generated meshes stay under ignored local tooling
 and user-cache directories; credentials must never be committed.
 
 ## Known limitations
-- The initial reviewed Core Set contains 15 common bricks and plates; reaching the 300–500 target is a deliberate metadata review task.
+- The reviewed Core Set contains 20 common bricks, plates, slopes, curved slopes, tiles, and a SNOT brick; reaching the 300–500 target remains a deliberate metadata review task.
 - LDraw aliases/decorated variants are not guessed.
 - Dimensions are curated rather than inferred from meshes.
 - The deployed web shell uses representative Milestone 1 data; production FastAPI hosting and live frontend wiring remain separate.
@@ -108,9 +108,23 @@ views. Its gated weights are downloaded only after the user accepts Stability AI
 terms and authenticates with Hugging Face. Output quality remains an estimate and
 should be reviewed in the source-versus-brick preview before buying parts.
 
+## Milestone 5 sculpted construction
+
+The controlled catalogue now records part families, surface profiles, top-stud
+availability, and bottom connections. The reconstruction engine automatically
+selects and orients straight and curved slopes for exposed source surfaces while
+keeping ordinary bricks wherever another layer must connect above. Validation
+uses the connection metadata, so a studless slope cannot incorrectly support a
+later brick.
+
+Generated results now report sculpted-part usage and active part families. The
+source comparison replaces the abstract voxel view with an immediate studded
+LEGO assembly preview after conversion, including procedural slope silhouettes,
+without requiring an LDraw library to judge the result.
+
 Validate the controlled catalogue against a local official library with:
 ```bash
 node scripts/validate-official-ldraw.mjs data/ldraw/official/ldraw
 ```
 
-Next milestones: add a true multi-view neural engine, slopes/curves/hinges, colour-material mapping, stronger structural optimisation, manual voxel cleanup, and printable illustrated instruction pages.
+Next milestones: add SNOT and Technic subassembly solving, colour-material mapping, stronger structural optimisation, manual shape cleanup, a true multi-view neural engine, and printable illustrated instruction pages.
