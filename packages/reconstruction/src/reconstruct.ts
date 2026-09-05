@@ -1,6 +1,6 @@
 import type {AssemblyDocument,PartInstance,QuarterTurn} from "../../renderer/src/assembly";
 
-export type SilhouetteProfile={widths:number[];confidence:number};
+export type SilhouetteProfile={widths:number[];offsets?:number[];aspectRatio?:number;confidence:number};
 export type ReconstructionOptions={name:string;heightLayers:number;maxWidthStuds:number;maxDepthStuds:number;colour:number;hollow:boolean};
 export type InstructionStep={number:number;layer:number;title:string;partIds:string[];summary:{partNumber:string;quantity:number}[]};
 export type ReconstructionResult={document:AssemblyDocument;instructions:InstructionStep[];occupiedStuds:number;confidence:number};
