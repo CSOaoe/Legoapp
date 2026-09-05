@@ -13,7 +13,7 @@ test("photo profiles create a closed, asymmetric 3D visual hull",()=>{
  assert.equal(mesh.closedConfidence,.86);
  assert.ok(mesh.bounds.max[0]-mesh.bounds.min[0]>.6);
  assert.ok(mesh.bounds.max[2]-mesh.bounds.min[2]>.35);
- const volume=voxelizeMesh(mesh,{maxWidthStuds:16,maxDepthStuds:12,maxHeightLayers:20,upAxis:"y",hollow:false,addSupports:false});
+ const volume=voxelizeMesh(mesh,{maxWidthStuds:16,maxDepthStuds:12,maxHeightLayers:20,upAxis:"y"});
  assert.ok(volume.occupiedVoxels>30);
 });
 

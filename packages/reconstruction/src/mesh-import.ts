@@ -18,7 +18,6 @@ export type VoxelizedMesh = {
   height: number;
   layers: Set<string>[];
   occupiedVoxels: number;
-  addedSupportVoxels: number;
   confidence: number;
   upAxis: Exclude<UpAxis, "auto">;
   flipped: boolean;
@@ -29,8 +28,6 @@ export type VoxelizeOptions = {
   maxDepthStuds: number;
   maxHeightLayers: number;
   upAxis: UpAxis;
-  hollow: boolean;
-  addSupports: boolean;
   flipUp?: boolean;
 };
 
@@ -162,34 +159,20 @@ export function voxelizeMesh(mesh: ParsedMesh, options: VoxelizeOptions): Voxeli
       if (bucket) bucket.push(triangle); else bins.set(key, [triangle]);
     }
   }
-  const solid = Array.from({ length: height }, () => new Set<string>());
+  const solid = Array.from({ length: height }, () => new Set<string>()), sampleOffsets = [.3, .7];
   for (let y = 0; y < height; y++) for (let z = 0; z < depth; z++) {
-    const intersections = (bins.get(`${y}:${z}`) ?? []).map(triangle => barycentricRayX(y + .5, z + .5, triangle)).filter((value): value is number => value !== null).sort((a, b) => a - b);
-    const unique = intersections.filter((value, index) => index === 0 || Math.abs(value - intersections[index - 1]) > 1e-5);
-    for (let x = 0; x < width; x++) if (unique.filter(value => value > x + .5).length % 2 === 1) solid[y].add(cellKey(x, z));
-  }
-  if (!solid.some(layer => layer.size)) throw new Error("The mesh could not be filled. Check that it is a closed/watertight solid and try another up axis");
-  let layers = solid;
-  if (options.hollow && width > 3 && depth > 3 && height > 3) {
-    layers = solid.map((layer, y) => new Set([...layer].filter(key => {
-      const [x, z] = key.split(":").map(Number);
-      return [[x - 1, z], [x + 1, z], [x, z - 1], [x, z + 1]].some(([nx, nz]) => !layer.has(cellKey(nx, nz))) || !solid[y - 1]?.has(key) || !solid[y + 1]?.has(key);
-    })));
-  }
-  let addedSupportVoxels = 0;
-  if (options.addSupports) {
-    for (let y = 1; y < height; y++) for (const key of [...layers[y]]) if (!layers[y - 1].has(key)) {
-      // The support option promises a physically connected build. Carry one
-      // stud-wide columns down from every unsupported footprint; users who
-      // prefer the untouched silhouette can leave structural supports off.
-      for (let below = y - 1; below >= 0; below--) {
-        if (!layers[below].has(key)) {
-          layers[below].add(key);
-          addedSupportVoxels++;
-        }
+    const votes = new Uint8Array(width), bucket = bins.get(`${y}:${z}`) ?? [];
+    for (const offsetY of sampleOffsets) for (const offsetZ of sampleOffsets) {
+      const intersections = bucket.map(triangle => barycentricRayX(y + offsetY, z + offsetZ, triangle)).filter((value): value is number => value !== null).sort((a, b) => a - b);
+      const unique = intersections.filter((value, index) => index === 0 || Math.abs(value - intersections[index - 1]) > 1e-5);
+      for (let pair = 0; pair + 1 < unique.length; pair += 2) {
+        const start = Math.max(0, Math.floor(unique[pair])), end = Math.min(width - 1, Math.floor(unique[pair + 1]));
+        for (let x = start; x <= end; x++) if (Math.min(unique[pair + 1], x + 1) - Math.max(unique[pair], x) >= .2) votes[x]++;
       }
     }
+    for (let x = 0; x < width; x++) if (votes[x] >= 2) solid[y].add(cellKey(x, z));
   }
-  const occupiedVoxels = layers.reduce((total, layer) => total + layer.size, 0);
-  return { width, depth, height, layers, occupiedVoxels, addedSupportVoxels, confidence: Math.round(mesh.closedConfidence * 100), upAxis: axes.name, flipped: Boolean(options.flipUp) };
+  if (!solid.some(layer => layer.size)) throw new Error("The mesh could not be filled. Check that it is a closed/watertight solid and try another up axis");
+  const occupiedVoxels = solid.reduce((total, layer) => total + layer.size, 0);
+  return { width, depth, height, layers: solid, occupiedVoxels, confidence: Math.round(mesh.closedConfidence * 100), upAxis: axes.name, flipped: Boolean(options.flipUp) };
 }
