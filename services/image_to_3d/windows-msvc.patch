@@ -1,0 +1,70 @@
+diff --git a/texture_baker/setup.py b/texture_baker/setup.py
+index d0fbf09..eaa6004 100644
+--- a/texture_baker/setup.py
++++ b/texture_baker/setup.py
+@@ -30,15 +30,19 @@ def get_extensions():
+     is_hip_extension = True if ((os.environ.get('ROCM_HOME') is not None) and (torch.version.hip is not None)) else False
+ 
+     extra_link_args = []
+-    extra_compile_args = {
+-        "cxx": [
++    if platform.system() == "Windows":
++        cxx_args = ["/O2" if not debug_mode else "/Od", "/openmp"]
++        if use_native_arch:
++            cxx_args.append("/arch:AVX2")
++    else:
++        cxx_args = [
+             "-O3" if not debug_mode else "-O0",
+             "-fdiagnostics-color=always",
+             "-fopenmp",
+-        ]
+-        + ["-march=native"]
+-        if use_native_arch
+-        else [],
++        ] + (["-march=native"] if use_native_arch else [])
++
++    extra_compile_args = {
++        "cxx": cxx_args,
+         "nvcc": [
+             "-O3" if not debug_mode else "-O0",
+         ],
+diff --git a/uv_unwrapper/setup.py b/uv_unwrapper/setup.py
+index 7e2dc68..8261811 100644
+--- a/uv_unwrapper/setup.py
++++ b/uv_unwrapper/setup.py
+@@ -1,5 +1,6 @@
+ import glob
+ import os
++import platform
+ 
+ import torch
+ from setuptools import find_packages, setup
+@@ -21,17 +22,20 @@ def get_extensions():
+     extension = CppExtension
+ 
+     extra_link_args = []
+-    extra_compile_args = {
+-        "cxx": [
++    if platform.system() == "Windows":
++        cxx_args = ["/O2" if not debug_mode else "/Od", "/openmp"]
++        if use_native_arch:
++            cxx_args.append("/arch:AVX2")
++    else:
++        cxx_args = [
+             "-O3" if not debug_mode else "-O0",
+             "-fdiagnostics-color=always",
+             ("-Xclang " if is_mac else "") + "-fopenmp",
+-        ]
+-        + ["-march=native"]
+-        if use_native_arch
+-        else []
+-        + ["-mmacosx-version-min=10.15"] if is_mac else [],
+-    }
++        ] + (["-march=native"] if use_native_arch else [])
++        if is_mac:
++            cxx_args.append("-mmacosx-version-min=10.15")
++
++    extra_compile_args = {"cxx": cxx_args}
+     if debug_mode:
+         extra_compile_args["cxx"].append("-g")
+         extra_compile_args["cxx"].append("-UNDEBUG")

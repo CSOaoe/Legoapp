@@ -8,15 +8,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { analyseImage, mergeProfiles, type AnalysedImage } from "../packages/reconstruction/src/image-analysis";
+import { generateLocalAiObj, getLocalAiHealth, type LocalAiHealth } from "../packages/reconstruction/src/local-ai-client";
 import { MeshConversionPreview } from "../packages/reconstruction/src/mesh-conversion-preview";
-import { parseMeshFile, voxelizeMesh, type ParsedMesh, type UpAxis, type VoxelizedMesh } from "../packages/reconstruction/src/mesh-import";
+import { parseMeshFile, parseObj, voxelizeMesh, type ParsedMesh, type UpAxis, type VoxelizedMesh } from "../packages/reconstruction/src/mesh-import";
 import { createPhotoMesh, exportMeshObj, exportMeshStl } from "../packages/reconstruction/src/photo-mesh";
 import { reconstructFromVoxels, type ReconstructionResult } from "../packages/reconstruction/src/reconstruct";
 import { billOfMaterials, CATALOGUE, COLOURS, exportLDraw, serializeAssembly, validateAssembly, type PartInstance } from "../packages/renderer/src/assembly";
 
 type Angle = "Front" | "Right" | "Back" | "Left" | "Detail";
-type Photo = { id: string; name: string; angle: Angle; analysis: AnalysedImage };
+type Photo = { id: string; name: string; angle: Angle; analysis: AnalysedImage; file: File };
 type SourceMode = "photos" | "mesh";
+type PhotoEngine = "visual-hull" | "local-ai";
 const ANGLES: Angle[] = ["Front", "Right", "Back", "Left", "Detail"];
 const SIZES = {
   Study: { layers: 10, width: 10, depth: 8 },
@@ -47,8 +49,9 @@ function LayerDiagram({ parts }: { parts: PartInstance[] }) {
 export default function Reconstruction() {
   const photoInput = useRef<HTMLInputElement>(null), meshInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<SourceMode>("photos"), [photos, setPhotos] = useState<Photo[]>([]);
+  const [photoEngine, setPhotoEngine] = useState<PhotoEngine>("visual-hull"), [aiHealth, setAiHealth] = useState<LocalAiHealth | null>(null);
   const [mesh, setMesh] = useState<ParsedMesh | null>(null), [photoMesh, setPhotoMesh] = useState<ParsedMesh | null>(null), [meshVolume, setMeshVolume] = useState<VoxelizedMesh | null>(null);
-  const [analysing, setAnalysing] = useState(false), [error, setError] = useState("");
+  const [analysing, setAnalysing] = useState(false), [generating, setGenerating] = useState(false), [aiProgress, setAiProgress] = useState(""), [error, setError] = useState("");
   const [size, setSize] = useState<keyof typeof SIZES>("Balanced"), [hollow, setHollow] = useState(true);
   const [supports, setSupports] = useState(true), [upAxis, setUpAxis] = useState<UpAxis>("auto"), [flipUp, setFlipUp] = useState(false), [colour, setColour] = useState(71);
   const [result, setResult] = useState<ReconstructionResult | null>(null), [step, setStep] = useState(0);
@@ -62,7 +65,7 @@ export default function Reconstruction() {
     setAnalysing(true); setError(""); invalidate();
     try {
       const selected = Array.from(files).slice(0, 8), analysed = await Promise.all(selected.map(file => analyseImage(file)));
-      setPhotos(current => [...current, ...analysed.map((analysis, index) => ({ id: `${Date.now()}-${index}`, name: selected[index].name, angle: ANGLES[(current.length + index) % ANGLES.length], analysis }))].slice(0, 8));
+      setPhotos(current => [...current, ...analysed.map((analysis, index) => ({ id: `${Date.now()}-${index}`, name: selected[index].name, angle: ANGLES[(current.length + index) % ANGLES.length], analysis, file: selected[index] }))].slice(0, 8));
     } catch (problem) { setError(problem instanceof Error ? problem.message : "Those images could not be analysed"); }
     finally { setAnalysing(false); }
   }
@@ -80,8 +83,15 @@ export default function Reconstruction() {
     invalidate();
   }
 
-  function generate() {
-    setError("");
+  async function checkAi() {
+    setError(""); setAiProgress("Checking local AI companion…");
+    try { const health = await getLocalAiHealth(); setAiHealth(health); return health; }
+    catch (problem) { setAiHealth(null); throw new Error(problem instanceof Error ? `${problem.message}. Start scripts\\start-ai3d.ps1 on this computer.` : "Local AI companion is unavailable"); }
+    finally { setAiProgress(""); }
+  }
+
+  async function generate() {
+    setError(""); setGenerating(true); setAiProgress("");
     try {
       const settings = SIZES[size]; let generated: ReconstructionResult;
       if (mode === "mesh") {
@@ -90,23 +100,34 @@ export default function Reconstruction() {
         generated = reconstructFromVoxels(volume, { name: `${mesh.name} brick conversion`, colour }); setMeshVolume(volume);
       } else {
         if (!photos.length) throw new Error("Add at least one clear photo first");
-        const frontPhotos = photos.filter(photo => photo.angle === "Front" || photo.angle === "Back" || photo.angle === "Detail"), sidePhotos = photos.filter(photo => photo.angle === "Left" || photo.angle === "Right");
-        const front = mergeProfiles((frontPhotos.length ? frontPhotos : photos).map(photo => photo.analysis.profile)), rawSide = mergeProfiles((sidePhotos.length ? sidePhotos : photos).map(photo => photo.analysis.profile));
-        const side = { ...rawSide, widths: rawSide.widths.map(value => sidePhotos.length ? value : value * .68), aspectRatio: sidePhotos.length ? rawSide.aspectRatio : (front.aspectRatio ?? .6) * .68 };
-        const createdMesh = createPhotoMesh(front, side), volume = voxelizeMesh(createdMesh, { maxWidthStuds: settings.width, maxDepthStuds: settings.depth, maxHeightLayers: settings.layers, upAxis: "y", hollow, addSupports: supports });
-        generated = reconstructFromVoxels(volume, { name: "Photo-to-3D brick conversion", colour }); setPhotoMesh(createdMesh); setMeshVolume(volume);
+        let createdMesh: ParsedMesh;
+        if (photoEngine === "local-ai") {
+          const health = await checkAi();
+          if (!health.ready) throw new Error(health.reason ?? "Local AI companion is not ready");
+          const source = photos.find(photo => photo.angle === "Front") ?? photos.find(photo => photo.angle === "Detail") ?? photos[0];
+          const obj = await generateLocalAiObj(source.file, (message, progress) => setAiProgress(`${message} · ${progress}%`));
+          createdMesh = parseObj(obj, `${source.name} AI reconstruction.obj`);
+        } else {
+          const frontPhotos = photos.filter(photo => photo.angle === "Front" || photo.angle === "Back" || photo.angle === "Detail"), sidePhotos = photos.filter(photo => photo.angle === "Left" || photo.angle === "Right");
+          const front = mergeProfiles((frontPhotos.length ? frontPhotos : photos).map(photo => photo.analysis.profile)), rawSide = mergeProfiles((sidePhotos.length ? sidePhotos : photos).map(photo => photo.analysis.profile));
+          const side = { ...rawSide, widths: rawSide.widths.map(value => sidePhotos.length ? value : value * .68), aspectRatio: sidePhotos.length ? rawSide.aspectRatio : (front.aspectRatio ?? .6) * .68 };
+          createdMesh = createPhotoMesh(front, side);
+        }
+        const volume = voxelizeMesh(createdMesh, { maxWidthStuds: settings.width, maxDepthStuds: settings.depth, maxHeightLayers: settings.layers, upAxis: "y", hollow, addSupports: supports });
+        generated = reconstructFromVoxels(volume, { name: photoEngine === "local-ai" ? "Stable Fast 3D brick conversion" : "Photo-to-3D brick conversion", colour }); setPhotoMesh(createdMesh); setMeshVolume(volume);
       }
       setResult(generated); setStep(0); sessionStorage.setItem("brickforge.generatedAssembly", serializeAssembly(generated.document));
     } catch (problem) { setError(problem instanceof Error ? problem.message : "The model could not be generated"); }
+    finally { setGenerating(false); setAiProgress(""); }
   }
 
   function openEditor() { if (result) { sessionStorage.setItem("brickforge.generatedAssembly", serializeAssembly(result.document)); window.location.assign("/assembly"); } }
-  const ready = mode === "mesh" ? Boolean(mesh) : photos.length > 0, sourceLabel = mode === "mesh" ? "3D mesh conversion" : "Photo-to-3D visual hull", previewMesh = mode === "mesh" ? mesh : photoMesh;
+  const ready = mode === "mesh" ? Boolean(mesh) : photos.length > 0, sourceLabel = mode === "mesh" ? "3D mesh conversion" : photoEngine === "local-ai" ? "Stable Fast 3D · local GPU" : "Photo-to-3D visual hull", previewMesh = mode === "mesh" ? mesh : photoMesh;
 
   return <main className="reconstruct-shell">
     <header className="reconstruct-top"><Link className="reconstruct-brand" href="/"><span><Blocks size={20} /></span><strong>BRICKFORGE <i>AI</i></strong></Link><nav><Link className="active" href="/"><FileUp size={15} />Reconstruction</Link><Link href="/assembly"><Box size={15} />Assembly editor</Link></nav><div className="local-badge"><ShieldCheck size={15} />Files processed locally</div></header>
     <section className="reconstruct-main">
-      <div className="reconstruct-title"><div><p>IMAGE TO 3D · M3.3</p><h1>Turn photographs or 3D files into buildable brick designs</h1><span>Upload several views to create a downloadable OBJ or STL visual hull, or import an existing mesh. BrickForge converts the resulting volume into an editable model, inventory, and ordered build layers.</span></div><div className="pipeline"><span className="done"><Check />Source</span><i /><span className={ready ? "done" : ""}><Check />3D mesh</span><i /><span className={result ? "done" : ""}><Check />Build</span></div></div>
+      <div className="reconstruct-title"><div><p>LOCAL AI 3D · M3.4</p><h1>Turn photographs or 3D files into buildable brick designs</h1><span>Generate a detailed mesh with the optional Stable Fast 3D companion, fuse several views into a private visual hull, or import an OBJ/STL. BrickForge then creates the editable model, inventory, and ordered build layers.</span></div><div className="pipeline"><span className="done"><Check />Source</span><i /><span className={ready ? "done" : ""}><Check />3D mesh</span><i /><span className={result ? "done" : ""}><Check />Build</span></div></div>
       <div className="reconstruct-grid">
         <section className="photo-column">
           <div className="section-label"><span>01</span><div><b>Source model</b><small>Use multiple photos or a ready-made 3D file</small></div></div>
@@ -116,9 +137,14 @@ export default function Reconstruction() {
             {mesh && <article className="mesh-card"><Box size={34} /><div><b>{mesh.name}</b><span>{mesh.format} · {mesh.triangles.length.toLocaleString()} triangles · {mesh.vertexCount.toLocaleString()} vertices</span><small>{Math.round(mesh.closedConfidence * 100)}% closed-edge confidence</small></div><button aria-label="Remove 3D model" onClick={() => { setMesh(null); invalidate(); }}><Trash2 size={15} /></button></article>}
             <div className="capture-tips"><Eye size={17} /><div><b>Why this matches better</b><span>A mesh contains the object’s actual depth and contours. Export as a closed STL or triangulated OBJ; detailed textures do not affect brick geometry.</span></div></div>
           </> : <>
+            <div className="photo-engine-options" aria-label="Photo reconstruction engine">
+              <button className={photoEngine === "local-ai" ? "selected" : ""} onClick={() => { setPhotoEngine("local-ai"); setAiHealth(null); invalidate(); }}><Sparkles size={15} /><span><b>Local AI</b><small>Stable Fast 3D · best detail</small></span></button>
+              <button className={photoEngine === "visual-hull" ? "selected" : ""} onClick={() => { setPhotoEngine("visual-hull"); invalidate(); }}><Layers3 size={15} /><span><b>Multi-view fusion</b><small>Fast · private · no model download</small></span></button>
+            </div>
             <button className={`dropzone ${photos.length ? "compact" : ""}`} onClick={() => photoInput.current?.click()} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); addPhotos(event.dataTransfer.files); }}><input ref={photoInput} hidden type="file" accept="image/jpeg,image/png,image/webp" multiple onChange={event => addPhotos(event.target.files)} />{analysing ? <LoaderCircle className="spin" size={29} /> : <ImagePlus size={29} />}<b>{analysing ? "Analysing silhouettes…" : photos.length ? "Add another angle" : "Choose or drop photographs"}</b><span>JPG, PNG, or WebP · up to 8 views</span></button>
             <div className="photo-list">{photos.map(photo => <article key={photo.id}><Image src={photo.analysis.preview} alt={photo.name} width={58} height={47} unoptimized /><div><b>{photo.name}</b><small>{photo.analysis.width} × {photo.analysis.height} · {Math.round(photo.analysis.profile.confidence * 100)}% mask confidence</small><select aria-label={`View angle for ${photo.name}`} value={photo.angle} onChange={event => { const angle = event.target.value as Angle; setPhotos(current => current.map(item => item.id === photo.id ? { ...item, angle } : item)); invalidate(); }}>{ANGLES.map(angle => <option key={angle}>{angle}</option>)}</select></div><button aria-label={`Remove ${photo.name}`} onClick={() => removePhoto(photo.id)}><Trash2 size={15} /></button></article>)}</div>
-            <div className="capture-tips"><Eye size={17} /><div><b>Best results need several angles</b><span>Use a plain background and label Front, Back, Left, and Right correctly. BrickForge fuses their silhouettes into a closed local 3D mesh; hidden detail is still estimated.</span></div></div>
+            {photoEngine === "local-ai" ? <div className={`ai-companion ${aiHealth?.ready ? "ready" : ""}`}><Sparkles size={17} /><div><b>{aiHealth?.ready ? `${aiHealth.engine} ready` : "Local AI companion"}</b><span>{aiHealth?.ready ? `${aiHealth.gpu} · images stay on this computer` : aiHealth?.reason ?? "Start scripts\\start-ai3d.ps1, then check the connection."}</span></div><button onClick={() => checkAi().catch(problem => setError(problem.message))}>Check</button></div> : <div className="capture-tips"><Eye size={17} /><div><b>Best results need several angles</b><span>Use a plain background and label Front, Back, Left, and Right correctly. BrickForge fuses their silhouettes into a closed local 3D mesh; hidden detail is still estimated.</span></div></div>}
+            {aiProgress && <div className="ai-progress"><LoaderCircle className="spin" size={14} />{aiProgress}</div>}
           </>}
           {error && <div className="reconstruct-error">{error}</div>}
         </section>
@@ -129,12 +155,12 @@ export default function Reconstruction() {
           <label className="setting-title">PRIMARY BRICK COLOUR</label><div className="colour-options">{COLOURS.map(value => <button key={value.code} className={colour === value.code ? "selected" : ""} aria-label={value.name} title={value.name} style={{ background: value.hex }} onClick={() => { setColour(value.code); invalidate(); }} />)}</div>
           <label className="hollow-toggle"><input type="checkbox" checked={hollow} onChange={event => { setHollow(event.target.checked); invalidate(); }} /><span><b>Hollow large sections</b><small>Uses fewer parts while preserving the outer shape.</small></span></label>
           {mode === "mesh" && <label className="hollow-toggle"><input type="checkbox" checked={supports} onChange={event => { setSupports(event.target.checked); invalidate(); }} /><span><b>Add internal reinforcement</b><small>Fills only hidden space already inside the source mesh; it no longer projects every overhang to the base.</small></span></label>}
-          <div className="estimate-card"><Sparkles size={18} /><div><b>{sourceLabel}</b><span>{mode === "mesh" ? "The mesh is voxelised at LEGO scale, reinforced, then packed with controlled real brick IDs." : "Front and side silhouettes become a closed 3D visual hull before the same mesh-to-brick engine runs."}</span></div></div>
-          <button className="generate-button" disabled={!ready || analysing} onClick={generate}><Sparkles size={17} />{result ? "Regenerate 3D model" : mode === "photos" ? "Create 3D model + bricks" : "Generate brick model"}<ArrowRight size={17} /></button>
+          <div className="estimate-card"><Sparkles size={18} /><div><b>{sourceLabel}</b><span>{mode === "mesh" ? "The mesh is voxelised at LEGO scale, reinforced, then packed with controlled real brick IDs." : photoEngine === "local-ai" ? "Your selected front image is reconstructed on this computer, exported to OBJ, and passed into the same mesh-to-brick engine." : "Front and side silhouettes become a closed 3D visual hull before the same mesh-to-brick engine runs."}</span></div></div>
+          <button className="generate-button" disabled={!ready || analysing || generating} onClick={generate}>{generating ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{generating ? "Generating 3D model…" : result ? "Regenerate 3D model" : mode === "photos" ? "Create 3D model + bricks" : "Generate brick model"}<ArrowRight size={17} /></button>
         </section>
         <section className={`result-column ${result ? "has-result" : ""}`}>
           <div className="section-label"><span>03</span><div><b>Build package</b><small>Model, inventory, and instructions</small></div></div>
-          {!result ? <div className="result-empty"><Layers3 size={34} /><b>Your build will appear here</b><span>{mode === "mesh" ? "Add a closed OBJ or STL, choose the build scale, and convert its real 3D volume." : "Add photographs, choose a size, and generate a quick brick study."}</span></div> : <>
+          {!result ? <div className="result-empty"><Layers3 size={34} /><b>Your build will appear here</b><span>{mode === "mesh" ? "Add a closed OBJ or STL, choose the build scale, and convert its real 3D volume." : photoEngine === "local-ai" ? "Add a clear front or three-quarter image and run the local GPU companion for a more detailed mesh." : "Add photographs, choose a size, and generate a quick brick study."}</span></div> : <>
             <div className="result-summary"><div><small>PARTS</small><b>{result.document.parts.length}</b></div><div><small>LAYERS</small><b>{result.instructions.length}</b></div><div><small>{mode === "mesh" ? "MESH QUALITY" : "SHAPE CONFIDENCE"}</small><b>{result.confidence}%</b></div></div>
             <div className={`result-valid ${validationIssues.length ? "has-warnings" : ""}`}><ShieldCheck size={18} /><div><b>{validationIssues.length ? "Shape generated · structural review needed" : "Connected editable build generated"}</b><span>{hollow ? "Hollow-shell" : "Solid"} construction · {result.occupiedStuds} occupied studs{validationIssues.length ? ` · ${validationIssues.filter(issue => issue.kind === "floating").length} unsupported groups to review` : ""}</span></div></div>
             {meshVolume && <div className="mesh-volume"><span>Converted volume</span><b>{meshVolume.width} × {meshVolume.depth} studs · {meshVolume.height} layers · {meshVolume.upAxis.toUpperCase()} up</b></div>}

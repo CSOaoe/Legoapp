@@ -1,7 +1,7 @@
 # BrickForge AI
 **Turn a 3D model or photograph into a buildable brick design.**
 
-Milestones 0–3.3 establish a modular monorepo, tested Parts Engine, real LDraw resolver, interactive multi-part assembly workspace, local multi-view photo-to-3D reconstruction, and direct OBJ/STL mesh conversion.
+Milestones 0–3.4 establish a modular monorepo, tested Parts Engine, real LDraw resolver, interactive multi-part assembly workspace, local multi-view photo-to-3D reconstruction, direct OBJ/STL mesh conversion, and an optional GPU-powered Stable Fast 3D companion.
 
 ## Product target
 BrickForge will accept one or, preferably, several photographs of the same object from different angles. The reconstruction pipeline will isolate the subject, estimate a shared 3D volume, approximate it with available brick geometry at the chosen size/detail level, validate the structure, and produce:
@@ -14,7 +14,7 @@ BrickForge will accept one or, preferably, several photographs of the same objec
 
 Multi-view photo sets with consistent lighting and front, rear, left, and right coverage give the strongest reconstruction input. Highly detailed sculptures are intentionally converted into buildable brick interpretations; output fidelity depends on target size, selected parts, and image coverage.
 
-## Setup
+## Web setup
 ```bash
 python -m venv .venv
 source .venv/bin/activate
@@ -40,6 +40,23 @@ npm test
 ```
 
 `GET /parts/search?q=Brick%202%20x%204` returns a record with internal/external IDs, dimensions, category, available geometry and Core Set status. Interactive API documentation is at `http://localhost:8000/docs`.
+
+## Optional local AI setup (Windows + NVIDIA)
+
+Stable Fast 3D is deliberately a companion process: the hosted web app cannot run
+a multi-gigabyte CUDA model, while the companion keeps images and model inference
+on the user's computer.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\setup-ai3d.ps1
+powershell -ExecutionPolicy Bypass -File scripts\login-ai3d.ps1
+powershell -ExecutionPolicy Bypass -File scripts\start-ai3d.ps1
+```
+
+Before login, request access and accept the licence on the
+[Stable Fast 3D model page](https://huggingface.co/stabilityai/stable-fast-3d).
+The runtime, model cache, and generated meshes stay under ignored local tooling
+and user-cache directories; credentials must never be committed.
 
 ## Known limitations
 - The initial reviewed Core Set contains 15 common bricks and plates; reaching the 300–500 target is a deliberate metadata review task.
@@ -77,9 +94,23 @@ Photograph mode now fuses labelled front/back and left/right silhouettes into a 
 
 This deterministic visual hull preserves the measured outline, proportions, and row-by-row centre shifts from the supplied views. It cannot infer occluded surface detail like a cloud neural 3D model, so multiple clean views and a plain contrasting background remain important.
 
+## Milestone 3.4 local AI image to 3D
+
+Photograph mode now offers a Stable Fast 3D option backed by a local FastAPI
+companion. The web app verifies the companion and GPU, submits the selected front
+view to a single-job CUDA queue, polls real progress, imports the resulting OBJ,
+and runs it through the existing watertight voxel, brick packing, BOM, instruction,
+and editor pipeline. The deterministic multi-view visual hull remains available
+without any model download.
+
+Stable Fast 3D estimates one mesh per image; it does not fuse BrickForge's labelled
+views. Its gated weights are downloaded only after the user accepts Stability AI's
+terms and authenticates with Hugging Face. Output quality remains an estimate and
+should be reviewed in the source-versus-brick preview before buying parts.
+
 Validate the controlled catalogue against a local official library with:
 ```bash
 node scripts/validate-official-ldraw.mjs data/ldraw/official/ldraw
 ```
 
-Next milestones: add an optional cloud neural image-to-3D provider, slopes/curves/hinges, colour-material mapping, stronger structural optimisation, manual voxel cleanup, and printable illustrated instruction pages.
+Next milestones: add a true multi-view neural engine, slopes/curves/hinges, colour-material mapping, stronger structural optimisation, manual voxel cleanup, and printable illustrated instruction pages.
