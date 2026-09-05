@@ -51,11 +51,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://brickforge-ai.cosmicsanctuaryobser.chatgpt.site",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5176",
-        "http://localhost:5173",
-        "http://localhost:5176",
     ],
+    allow_origin_regex=r"^http://(?:localhost|127\.0\.0\.1):\d+$",
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
