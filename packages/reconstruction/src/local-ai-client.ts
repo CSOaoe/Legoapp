@@ -5,6 +5,8 @@ export type LocalAiHealth = {
   reason: string | null;
   gpu: string | null;
   modelCached: boolean;
+  encoderCached: boolean;
+  clipCached: boolean;
   authenticated: boolean;
   queueDepth: number;
 };

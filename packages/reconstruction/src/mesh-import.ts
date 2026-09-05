@@ -179,11 +179,14 @@ export function voxelizeMesh(mesh: ParsedMesh, options: VoxelizeOptions): Voxeli
   let addedSupportVoxels = 0;
   if (options.addSupports) {
     for (let y = 1; y < height; y++) for (const key of [...layers[y]]) if (!layers[y - 1].has(key)) {
-      // Reinforce only through volume that belongs to the source mesh. The old
-      // implementation projected every overhang to the base, which could add
-      // an object-sized forest of pillars and destroy the source silhouette.
-      for (let below = y - 1; below >= 0 && solid[below].has(key) && !layers[below].has(key); below--) {
-        layers[below].add(key); addedSupportVoxels++;
+      // The support option promises a physically connected build. Carry one
+      // stud-wide columns down from every unsupported footprint; users who
+      // prefer the untouched silhouette can leave structural supports off.
+      for (let below = y - 1; below >= 0; below--) {
+        if (!layers[below].has(key)) {
+          layers[below].add(key);
+          addedSupportVoxels++;
+        }
       }
     }
   }

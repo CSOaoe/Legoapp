@@ -44,12 +44,12 @@ endsolid sample`;
  assert.equal(mesh.format,"STL");assert.equal(mesh.triangles.length,1);assert.equal(mesh.vertexCount,3);
 });
 
-test("support reinforcement never expands beyond the source solid",()=>{
+test("support reinforcement connects every occupied voxel to the base",()=>{
  const mesh=parseObj(cubeObj,"cube.obj");
- const solid=voxelizeMesh(mesh,{maxWidthStuds:8,maxDepthStuds:8,maxHeightLayers:8,upAxis:"y",hollow:false,addSupports:false});
+ const hollow=voxelizeMesh(mesh,{maxWidthStuds:8,maxDepthStuds:8,maxHeightLayers:8,upAxis:"y",hollow:true,addSupports:false});
  const reinforced=voxelizeMesh(mesh,{maxWidthStuds:8,maxDepthStuds:8,maxHeightLayers:8,upAxis:"y",hollow:true,addSupports:true});
- assert.ok(reinforced.occupiedVoxels<=solid.occupiedVoxels);
- for(let layer=0;layer<reinforced.height;layer++)for(const key of reinforced.layers[layer])assert.ok(solid.layers[layer].has(key));
+ assert.ok(reinforced.occupiedVoxels>=hollow.occupiedVoxels);
+ for(let layer=1;layer<reinforced.height;layer++)for(const key of reinforced.layers[layer])assert.ok(reinforced.layers[layer-1].has(key));
 });
 
 test("auto orientation follows file conventions instead of the longest dimension",()=>{

@@ -1,8 +1,10 @@
 # BrickForge Local AI 3D companion
 
 This local-only FastAPI service connects BrickForge to Stability AI's Stable Fast
-3D model. It runs on the user's NVIDIA GPU and returns an OBJ that the existing
-BrickForge voxel and brick-packing pipeline can consume.
+3D model. It runs on the user's NVIDIA GPU and returns a geometry-only OBJ that
+the existing BrickForge voxel and brick-packing pipeline can consume. Texture
+baking is deliberately skipped because brick conversion uses the watertight
+shape, not printable surface textures.
 
 The service binds to `127.0.0.1:8787`, accepts one image per generation, keeps a
 single GPU job active at a time, and never uploads the source image elsewhere.

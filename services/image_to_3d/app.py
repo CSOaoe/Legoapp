@@ -20,8 +20,17 @@ ROOT = Path(__file__).resolve().parents[2]
 ENGINE_ROOT = ROOT / ".tools" / "stable-fast-3d"
 OUTPUT_ROOT = ROOT / ".tools" / "ai3d-output"
 MODEL_ID = os.environ.get("BRICKFORGE_SF3D_MODEL", "stabilityai/stable-fast-3d")
+ENCODER_ID = "facebook/dinov2-large"
+CLIP_ID = "laion/CLIP-ViT-B-32-laion2B-s34B-b79K"
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_JOBS = 20
+
+# All model assets are pre-fetched by login-ai3d.ps1. Keeping inference offline
+# avoids metadata calls and guarantees that source images never leave the device.
+os.environ.setdefault("HF_HUB_OFFLINE", "1")
+os.environ.setdefault("TRANSFORMERS_CACHE", str(ROOT / ".tools" / "transformers-cache"))
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+os.environ.setdefault("U2NET_HOME", str(ROOT / ".tools" / "u2net"))
 
 if str(ENGINE_ROOT) not in sys.path:
     sys.path.insert(0, str(ENGINE_ROOT))
@@ -69,15 +78,23 @@ model = None
 rembg_session = None
 
 
-def model_is_cached() -> bool:
-    if Path(MODEL_ID).is_dir():
-        return True
+def cached_snapshot(repo_id: str) -> Path | None:
+    if Path(repo_id).is_dir():
+        return Path(repo_id)
     try:
         from huggingface_hub import scan_cache_dir
 
-        return any(repo.repo_id == MODEL_ID for repo in scan_cache_dir().repos)
+        repo = next((item for item in scan_cache_dir().repos if item.repo_id == repo_id), None)
+        if not repo or not repo.revisions:
+            return None
+        revision = max(repo.revisions, key=lambda item: item.last_modified)
+        return Path(revision.snapshot_path)
     except Exception:
-        return False
+        return None
+
+
+def model_is_cached() -> bool:
+    return cached_snapshot(MODEL_ID) is not None
 
 
 def token_is_configured() -> bool:
@@ -105,18 +122,76 @@ def get_model():
             return model, rembg_session
         import rembg
         import torch
+        from omegaconf import OmegaConf
+        from safetensors.torch import load_model
         from sf3d.system import SF3D
 
         if not torch.cuda.is_available():
             raise RuntimeError("A CUDA-capable NVIDIA GPU is required")
-        loaded = SF3D.from_pretrained(
-            MODEL_ID, config_name="config.yaml", weight_name="model.safetensors"
-        )
+        model_root = cached_snapshot(MODEL_ID)
+        encoder_root = cached_snapshot(ENCODER_ID)
+        if model_root is None or encoder_root is None:
+            raise RuntimeError("Stable Fast 3D or its DINOv2 encoder is not cached")
+        cfg = OmegaConf.load(model_root / "config.yaml")
+        cfg.image_tokenizer.pretrained_model_name_or_path = str(encoder_root)
+        OmegaConf.resolve(cfg)
+        loaded = SF3D(cfg)
+        load_model(loaded, model_root / "model.safetensors")
         loaded.to("cuda")
         loaded.eval()
         model = loaded
         rembg_session = rembg.new_session()
         return model, rembg_session
+
+
+def run_geometry_only(loaded_model, source: Image.Image):
+    """Run SF3D without texture baking; BrickForge only consumes mesh geometry."""
+    import numpy as np
+    import torch
+    import trimesh
+    from sf3d.utils import create_intrinsic_from_fov_deg, default_cond_c2w
+
+    mask_cond, rgb_cond = loaded_model.prepare_image(source)
+    intrinsic, intrinsic_normed_cond = create_intrinsic_from_fov_deg(
+        loaded_model.cfg.default_fovy_deg,
+        loaded_model.cfg.cond_image_size,
+        loaded_model.cfg.cond_image_size,
+    )
+    batch = {
+        "rgb_cond": rgb_cond,
+        "mask_cond": mask_cond,
+        "c2w_cond": default_cond_c2w(loaded_model.cfg.default_distance)
+        .to(loaded_model.device)
+        .view(1, 1, 4, 4),
+        "intrinsic_cond": intrinsic.to(loaded_model.device).view(1, 1, 3, 3),
+        "intrinsic_normed_cond": intrinsic_normed_cond.to(loaded_model.device).view(
+            1, 1, 3, 3
+        ),
+    }
+    batch["rgb_cond"] = loaded_model.image_processor(
+        batch["rgb_cond"], loaded_model.cfg.cond_image_size
+    )
+    batch["mask_cond"] = loaded_model.image_processor(
+        batch["mask_cond"], loaded_model.cfg.cond_image_size
+    )
+    scene_codes, _ = loaded_model.get_scene_codes(batch)
+    mesh = loaded_model.triplane_to_meshes(scene_codes)[0]
+    if mesh.v_pos.shape[0] == 0:
+        raise RuntimeError("The AI model produced an empty mesh")
+
+    result = trimesh.Trimesh(
+        vertices=mesh.v_pos.detach().float().cpu().numpy(),
+        faces=mesh.t_pos_idx.detach().cpu().numpy(),
+        process=False,
+    )
+    result.apply_transform(
+        trimesh.transformations.rotation_matrix(np.radians(-90), [1, 0, 0])
+    )
+    result.apply_transform(
+        trimesh.transformations.rotation_matrix(np.radians(90), [0, 1, 0])
+    )
+    result.invert()
+    return result
 
 
 def generate_mesh(job_id: str, image_bytes: bytes) -> None:
@@ -132,9 +207,7 @@ def generate_mesh(job_id: str, image_bytes: bytes) -> None:
         source = resize_foreground(source, 0.85)
         update_job(job_id, message="Generating the 3D mesh on the GPU", progress=45)
         with torch.inference_mode(), torch.autocast(device_type="cuda", dtype=torch.bfloat16):
-            mesh, _ = loaded_model.run_image(
-                source, bake_resolution=512, remesh="none", vertex_count=-1
-            )
+            mesh = run_geometry_only(loaded_model, source)
         update_job(job_id, message="Exporting an OBJ for BrickForge", progress=90)
         job_dir = OUTPUT_ROOT / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -175,15 +248,21 @@ def health():
     except Exception:
         gpu, cuda = None, False
     cached = model_is_cached()
+    encoder_cached = cached_snapshot(ENCODER_ID) is not None
+    clip_cached = cached_snapshot(CLIP_ID) is not None
     authenticated = token_is_configured()
-    ready = ENGINE_ROOT.is_dir() and cuda and (cached or authenticated)
+    ready = ENGINE_ROOT.is_dir() and cuda and cached and encoder_cached and clip_cached
     reason = None
     if not ENGINE_ROOT.is_dir():
         reason = "Stable Fast 3D engine is not installed"
     elif not cuda:
         reason = "CUDA GPU is unavailable"
-    elif not (cached or authenticated):
-        reason = "Model access is not configured; run scripts\\login-ai3d.ps1"
+    elif not cached:
+        reason = "Stable Fast 3D weights are not cached; run scripts\\login-ai3d.ps1"
+    elif not encoder_cached:
+        reason = "DINOv2 encoder is not cached; run scripts\\login-ai3d.ps1"
+    elif not clip_cached:
+        reason = "CLIP estimator is not cached; run scripts\\login-ai3d.ps1"
     return {
         "service": "brickforge-local-ai3d",
         "engine": "Stable Fast 3D",
@@ -191,6 +270,8 @@ def health():
         "reason": reason,
         "gpu": gpu,
         "modelCached": cached,
+        "encoderCached": encoder_cached,
+        "clipCached": clip_cached,
         "authenticated": authenticated,
         "queueDepth": sum(job.status in {"queued", "running"} for job in jobs.values()),
     }
